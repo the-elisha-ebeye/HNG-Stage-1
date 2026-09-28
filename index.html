@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A focused, elegant to-do list for your day." />
+    <title>HNG-Elisha Tasks</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="HNG-Elisha home">
+          <span class="brand-mark">✓</span>
+        <span>HNG-Elisha<span class="brand-accent">.</span></span>
+        </a>
+        <div class="date-display" id="date-display"></div>
+      </header>
+
+      <section class="hero" aria-labelledby="page-title">
+        <p class="eyebrow">Your daily ritual</p>
+        <h1 id="page-title">Make space for<br /><em>what matters.</em></h1>
+        <p class="intro">A clear mind starts with a clear list.</p>
+      </section>
+
+      <section class="task-card" aria-labelledby="tasks-heading">
+        <div class="card-heading">
+          <div>
+            <p class="section-label">Today</p>
+            <h2 id="tasks-heading">Your tasks</h2>
+          </div>
+          <span class="task-count" id="task-count">0 tasks</span>
+        </div>
+
+        <form class="add-task" id="task-form">
+          <label class="sr-only" for="task-input">Add a new task</label>
+          <input id="task-input" type="text" maxlength="120" placeholder="What needs doing?" autocomplete="off" />
+          <label class="sr-only" for="priority-input">Priority</label>
+          <select id="priority-input" aria-label="Priority">
+            <option value="none">Priority</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <label class="sr-only" for="recurrence-input">Repeat</label>
+          <select id="recurrence-input" aria-label="Repeat">
+            <option value="none">Does not repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+          <button type="submit" aria-label="Add task">+</button>
+        </form>
+
+        <div class="toolbar">
+          <div class="filters" role="group" aria-label="Filter tasks">
+            <button class="filter-button active" type="button" data-filter="all">All</button>
+            <button class="filter-button" type="button" data-filter="active">In progress</button>
+            <button class="filter-button" type="button" data-filter="completed">Completed</button>
+          </div>
+          <label class="sort-control">Sort
+            <select id="sort-select" aria-label="Sort tasks">
+              <option value="manual">Manual order</option>
+              <option value="priority">Priority</option>
+              <option value="alphabetical">A–Z</option>
+              <option value="newest">Newest</option>
+            </select>
+          </label>
+        </div>
+
+        <ul class="task-list" id="task-list" aria-live="polite"></ul>
+        <div class="empty-state" id="empty-state">
+          <span class="empty-icon">✦</span>
+          <p id="empty-title">Your list is clear.</p>
+          <span id="empty-description">Add something small to get started.</span>
+        </div>
+
+        <section class="stats-panel" aria-labelledby="stats-heading">
+          <div class="stats-heading">
+            <div>
+              <p class="section-label">Your momentum</p>
+              <h3 id="stats-heading">Progress &amp; streak</h3>
+            </div>
+            <span class="streak-value" id="streak-value">0 days</span>
+          </div>
+          <div class="progress-track" aria-label="Task completion progress">
+            <span class="progress-bar" id="progress-bar"></span>
+          </div>
+          <div class="stats-summary">
+            <span id="progress-summary">0 of 0 tasks complete</span>
+            <span id="streak-label">Complete a task to start your streak</span>
+          </div>
+        </section>
+      </section>
+
+      <footer class="footer">
+        <span><span class="footer-dot"></span> Keep going, gently.</span>
+        <button class="clear-button" id="clear-completed" type="button">Clear completed</button>
+      </footer>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
