@@ -55,8 +55,12 @@
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
-          <label class="sr-only" for="schedule-input">Scheduled date and time</label>
-          <input id="schedule-input" type="datetime-local" aria-label="Scheduled date and time" />
+          <label class="sr-only" for="schedule-input">Scheduled time</label>
+          <input id="schedule-input" type="time" aria-label="Scheduled time" />
+          <label class="reminder-option">
+            <input id="reminder-input" type="checkbox" />
+            <span>Remind me</span>
+          </label>
           <button type="submit" aria-label="Add task">+</button>
         </form>
 

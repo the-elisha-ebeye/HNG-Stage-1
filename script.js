@@ -5,6 +5,7 @@ const taskInput = document.querySelector("#task-input");
 const priorityInput = document.querySelector("#priority-input");
 const recurrenceInput = document.querySelector("#recurrence-input");
 const scheduleInput = document.querySelector("#schedule-input");
+const reminderInput = document.querySelector("#reminder-input");
 const taskList = document.querySelector("#task-list");
 const taskCount = document.querySelector("#task-count");
 const emptyState = document.querySelector("#empty-state");
@@ -27,6 +28,8 @@ let tasks = loadTasks().map((task, index) => ({
   createdAt: task.createdAt || Date.now() - index,
   recurrence: task.recurrence || "none",
   scheduledAt: task.scheduledAt || null,
+  scheduledTime: task.scheduledTime || (task.scheduledAt ? new Date(task.scheduledAt).toTimeString().slice(0, 5) : ""),
+  reminder: task.reminder === true,
   completedAt: task.completedAt || null,
 }));
 let currentFilter = "all";
@@ -38,7 +41,7 @@ dateDisplay.textContent = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric",
 }).format(new Date());
-scheduleInput.value = toDateTimeLocalValue(new Date());
+scheduleInput.value = new Date().toTimeString().slice(0, 5);
 
 function loadTasks() {
   try {
@@ -53,9 +56,10 @@ function saveTasks() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
 }
 
-function toDateTimeLocalValue(date) {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 16);
+function createTaskId() {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function isDue(task) {
@@ -85,7 +89,10 @@ function saveCompletionDates() {
 }
 
 function dateKey(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function getStreak() {
@@ -101,17 +108,21 @@ function getStreak() {
 
 function addNextRecurringTask(task) {
   if (task.recurrence === "none") return;
-  const nextDate = new Date(task.scheduledAt || task.completedAt || Date.now());
+  const nextDate = new Date();
+  const [hours, minutes] = (task.scheduledTime || nextDate.toTimeString().slice(0, 5)).split(":").map(Number);
+  nextDate.setHours(hours, minutes, 0, 0);
   if (task.recurrence === "daily") nextDate.setDate(nextDate.getDate() + 1);
   if (task.recurrence === "weekly") nextDate.setDate(nextDate.getDate() + 7);
   if (task.recurrence === "monthly") nextDate.setMonth(nextDate.getMonth() + 1);
   tasks.unshift({
     ...task,
-    id: crypto.randomUUID(),
+    id: createTaskId(),
     completed: false,
     progress: 0,
     completedAt: null,
     scheduledAt: nextDate.toISOString(),
+    scheduledTime: task.scheduledTime || "",
+    reminder: task.reminder,
     createdAt: nextDate.getTime(),
   });
 }
@@ -137,10 +148,10 @@ function visibleTasks() {
 
   if (currentSort === "priority") {
     const priorityOrder = { high: 0, medium: 1, low: 2, none: 3 };
-    return filtered.toSorted((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+    return [...filtered].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   }
-  if (currentSort === "alphabetical") return filtered.toSorted((a, b) => a.text.localeCompare(b.text));
-  if (currentSort === "newest") return filtered.toSorted((a, b) => b.createdAt - a.createdAt);
+  if (currentSort === "alphabetical") return [...filtered].sort((a, b) => a.text.localeCompare(b.text));
+  if (currentSort === "newest") return [...filtered].sort((a, b) => b.createdAt - a.createdAt);
   return filtered;
 }
 
@@ -242,10 +253,10 @@ function createTaskElement(task) {
     recurrence.textContent = `↻ ${task.recurrence}`;
     details.append(recurrence);
   }
-  if (task.scheduledAt) {
+  if (task.scheduledTime) {
     const scheduled = document.createElement("span");
     scheduled.className = "recurrence-label";
-    scheduled.textContent = `at ${formatScheduledTime(task.scheduledAt)}`;
+    scheduled.textContent = `at ${task.scheduledTime}`;
     details.append(scheduled);
   }
 
@@ -280,6 +291,10 @@ function reorderTasks(draggedId, targetId) {
   tasks = tasks.map((task) => visibleIds.includes(task.id) ? orderedVisibleTasks[visibleIndex++] : task);
   saveTasks();
   render();
+  setInterval(() => {
+    render();
+    checkReminders();
+  }, 30000);
 }
 
 taskForm.addEventListener("submit", (event) => {
@@ -288,25 +303,48 @@ taskForm.addEventListener("submit", (event) => {
   if (!text) return;
 
   tasks.unshift({
-    id: crypto.randomUUID(),
+    id: createTaskId(),
     text,
     completed: false,
+    progress: 0,
     priority: priorityInput.value,
     recurrence: recurrenceInput.value,
-    scheduledAt: (scheduleInput.value ? new Date(scheduleInput.value) : new Date()).toISOString(),
+    scheduledAt: null,
+    scheduledTime: scheduleInput.value,
+    reminder: reminderInput.checked,
     createdAt: Date.now(),
   });
   taskInput.value = "";
   priorityInput.value = "none";
   recurrenceInput.value = "none";
-  scheduleInput.value = toDateTimeLocalValue(new Date());
+  scheduleInput.value = new Date().toTimeString().slice(0, 5);
+  reminderInput.checked = false;
+  if (tasks[0].reminder) requestReminderPermission();
   saveTasks();
   currentFilter = "all";
   filterButtons.forEach((button) => button.classList.toggle("active", button.dataset.filter === "all"));
   render();
-  setInterval(render, 60000);
+
   taskInput.focus();
 });
+
+async function requestReminderPermission() {
+  if (!("Notification" in window)) return false;
+  if (Notification.permission === "default") await Notification.requestPermission();
+  return Notification.permission === "granted";
+}
+
+function checkReminders() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const currentTime = new Date().toTimeString().slice(0, 5);
+  tasks.forEach((task) => {
+    if (task.reminder && task.progress < 100 && task.scheduledTime === currentTime && task.lastReminderDate !== dateKey()) {
+      new Notification("HNG-Elisha reminder", { body: task.text });
+      task.lastReminderDate = dateKey();
+      saveTasks();
+    }
+  });
+}
 
 sortSelect.addEventListener("change", () => {
   currentSort = sortSelect.value;
