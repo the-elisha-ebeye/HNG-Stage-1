@@ -4,6 +4,7 @@ const taskForm = document.querySelector("#task-form");
 const taskInput = document.querySelector("#task-input");
 const priorityInput = document.querySelector("#priority-input");
 const recurrenceInput = document.querySelector("#recurrence-input");
+const scheduleInput = document.querySelector("#schedule-input");
 const taskList = document.querySelector("#task-list");
 const taskCount = document.querySelector("#task-count");
 const emptyState = document.querySelector("#empty-state");
@@ -22,8 +23,10 @@ const COMPLETION_KEY = "velvet-completions";
 let tasks = loadTasks().map((task, index) => ({
   ...task,
   priority: task.priority || "none",
+  progress: typeof task.progress === "number" ? Math.min(100, Math.max(0, task.progress)) : (task.completed ? 100 : 0),
   createdAt: task.createdAt || Date.now() - index,
   recurrence: task.recurrence || "none",
+  scheduledAt: task.scheduledAt || null,
   completedAt: task.completedAt || null,
 }));
 let currentFilter = "all";
@@ -35,6 +38,7 @@ dateDisplay.textContent = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric",
 }).format(new Date());
+scheduleInput.value = toDateTimeLocalValue(new Date());
 
 function loadTasks() {
   try {
@@ -47,6 +51,24 @@ function loadTasks() {
 
 function saveTasks() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+
+function toDateTimeLocalValue(date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function isDue(task) {
+  return !task.scheduledAt || new Date(task.scheduledAt).getTime() <= Date.now();
+}
+
+function formatScheduledTime(value) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function loadCompletionDates() {
@@ -79,7 +101,7 @@ function getStreak() {
 
 function addNextRecurringTask(task) {
   if (task.recurrence === "none") return;
-  const nextDate = new Date();
+  const nextDate = new Date(task.scheduledAt || task.completedAt || Date.now());
   if (task.recurrence === "daily") nextDate.setDate(nextDate.getDate() + 1);
   if (task.recurrence === "weekly") nextDate.setDate(nextDate.getDate() + 7);
   if (task.recurrence === "monthly") nextDate.setMonth(nextDate.getMonth() + 1);
@@ -87,26 +109,29 @@ function addNextRecurringTask(task) {
     ...task,
     id: crypto.randomUUID(),
     completed: false,
+    progress: 0,
     completedAt: null,
+    scheduledAt: nextDate.toISOString(),
     createdAt: nextDate.getTime(),
   });
 }
 
 function renderStats() {
-  const completed = tasks.filter((task) => task.completed).length;
+  const completed = tasks.filter((task) => task.progress === 100).length;
   const total = tasks.length;
-  const percent = total ? Math.round((completed / total) * 100) : 0;
+  const percent = total ? Math.round(tasks.reduce((sum, task) => sum + task.progress, 0) / total) : 0;
   const streak = getStreak();
   progressBar.style.width = `${percent}%`;
-  progressSummary.textContent = `${completed} of ${total} ${total === 1 ? "task" : "tasks"} complete`;
+  progressSummary.textContent = `${percent}% overall progress · ${completed} of ${total} complete`;
   streakValue.textContent = `${streak} ${streak === 1 ? "day" : "days"}`;
   streakLabel.textContent = streak ? "Keep it going today" : "Complete a task to start your streak";
 }
 
 function visibleTasks() {
   const filtered = tasks.filter((task) => {
-    if (currentFilter === "active") return !task.completed;
-    if (currentFilter === "completed") return task.completed;
+    if (!isDue(task)) return false;
+    if (currentFilter === "active") return task.progress < 100;
+    if (currentFilter === "completed") return task.progress === 100;
     return true;
   });
 
@@ -124,7 +149,7 @@ function render() {
   taskList.replaceChildren();
   visible.forEach((task) => taskList.append(createTaskElement(task)));
 
-  const remaining = tasks.filter((task) => !task.completed).length;
+  const remaining = tasks.filter((task) => task.progress < 100 && isDue(task)).length;
   taskCount.textContent = `${remaining} ${remaining === 1 ? "task" : "tasks"} left`;
   emptyState.classList.toggle("hidden", visible.length > 0);
 
@@ -143,7 +168,7 @@ function render() {
 
 function createTaskElement(task) {
   const item = document.createElement("li");
-  item.className = `task-item${task.completed ? " completed" : ""}${task.priority !== "none" ? ` priority-${task.priority}` : ""}`;
+  item.className = `task-item${task.progress === 100 ? " completed" : ""}${task.priority !== "none" ? ` priority-${task.priority}` : ""}`;
   item.dataset.id = task.id;
   item.draggable = currentSort === "manual";
   item.addEventListener("dragstart", (event) => {
@@ -164,25 +189,40 @@ function createTaskElement(task) {
     reorderTasks(event.dataTransfer.getData("text/plain"), task.id);
   });
 
-  const check = document.createElement("button");
-  check.className = "check-button";
-  check.type = "button";
-  check.setAttribute("aria-label", task.completed ? `Mark "${task.text}" incomplete` : `Complete "${task.text}"`);
-  check.textContent = task.completed ? "✓" : "";
-  check.addEventListener("click", () => {
-    task.completed = !task.completed;
-    if (task.completed) {
+  const progressControl = document.createElement("div");
+  progressControl.className = "progress-control";
+  const progressInput = document.createElement("input");
+  progressInput.className = "task-progress";
+  progressInput.type = "range";
+  progressInput.min = "0";
+  progressInput.max = "100";
+  progressInput.step = "5";
+  progressInput.value = String(task.progress);
+  progressInput.setAttribute("aria-label", `Progress for "${task.text}"`);
+  const progressValue = document.createElement("output");
+  progressValue.className = "progress-value";
+  progressValue.textContent = `${task.progress}%`;
+  progressInput.addEventListener("input", () => {
+    task.progress = Number(progressInput.value);
+    progressValue.textContent = `${task.progress}%`;
+    item.classList.toggle("completed", task.progress === 100);
+  });
+  progressInput.addEventListener("change", () => {
+    const reachedCompletion = task.progress === 100 && !task.completed;
+    task.completed = task.progress === 100;
+    if (reachedCompletion) {
       task.completedAt = Date.now();
       const today = dateKey();
       if (!completionDates.includes(today)) completionDates.push(today);
       addNextRecurringTask(task);
-    } else {
+    } else if (task.progress < 100) {
       task.completedAt = null;
     }
     saveCompletionDates();
     saveTasks();
     render();
   });
+  progressControl.append(progressInput, progressValue);
 
   const text = document.createElement("p");
   text.className = "task-text";
@@ -202,6 +242,12 @@ function createTaskElement(task) {
     recurrence.textContent = `↻ ${task.recurrence}`;
     details.append(recurrence);
   }
+  if (task.scheduledAt) {
+    const scheduled = document.createElement("span");
+    scheduled.className = "recurrence-label";
+    scheduled.textContent = `at ${formatScheduledTime(task.scheduledAt)}`;
+    details.append(scheduled);
+  }
 
   const remove = document.createElement("button");
   remove.className = "delete-button";
@@ -217,7 +263,7 @@ function createTaskElement(task) {
   const content = document.createElement("div");
   content.className = "task-content";
   content.append(text, details);
-  item.append(check, content, remove);
+  item.append(progressControl, content, remove);
   return item;
 }
 
@@ -247,15 +293,18 @@ taskForm.addEventListener("submit", (event) => {
     completed: false,
     priority: priorityInput.value,
     recurrence: recurrenceInput.value,
+    scheduledAt: (scheduleInput.value ? new Date(scheduleInput.value) : new Date()).toISOString(),
     createdAt: Date.now(),
   });
   taskInput.value = "";
   priorityInput.value = "none";
   recurrenceInput.value = "none";
+  scheduleInput.value = toDateTimeLocalValue(new Date());
   saveTasks();
   currentFilter = "all";
   filterButtons.forEach((button) => button.classList.toggle("active", button.dataset.filter === "all"));
   render();
+  setInterval(render, 60000);
   taskInput.focus();
 });
 
@@ -273,7 +322,7 @@ filterButtons.forEach((button) => {
 });
 
 clearCompletedButton.addEventListener("click", () => {
-  tasks = tasks.filter((task) => !task.completed);
+  tasks = tasks.filter((task) => task.progress < 100);
   saveTasks();
   render();
 });
